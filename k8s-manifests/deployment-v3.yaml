@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-web-app-v3
+spec:
+  replicas: 2 # Ensure at least 2 replicas for the requirement
+  selector:
+    matchLabels:
+      app: my-web-app
+      version: v3
+  template:
+    metadata:
+      labels:
+        app: my-web-app
+        version: v3
+    spec:
+      containers:
+      - name: web
+        image: my-web-app:v3
+        ports:
+        - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-web-app-service-v3
+  labels: # Add this section
+    app: my-web-app # Add this label, matching the ServiceMonitor selector (note: lowercase 'a' here, assuming this is the label on the *pods* selected by the service's *selector*)
+# Inside your Service definition in deployment-v3.yaml (or service-v3.yaml)
+spec:
+  selector:
+    app: my-web-app
+    version: v3
+  ports:
+    - name: web # <-- Add this line
+      protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: LoadBalancer

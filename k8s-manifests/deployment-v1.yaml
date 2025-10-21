@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-web-app-v1
+spec:
+  replicas: 2 # Ensure at least 2 replicas for the requirement
+  selector:
+    matchLabels:
+      app: my-web-app
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: my-web-app
+        version: v1
+    spec:
+      containers:
+      - name: web
+        image: my-web-app:v1
+        ports:
+        - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-web-app-service-v1
+spec:
+  selector:
+    app: my-web-app
+    version: v1
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: LoadBalancer # Exposes service externally in Docker Desktop

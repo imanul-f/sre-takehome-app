@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: my-web-app-monitor
+  labels:
+    app: my-web-app
+    release: my-prometheus
+spec:
+  selector: # Which services should this monitor?
+    matchLabels:
+      app: my-web-app # Changed from 'App' to 'app'
+  endpoints:
+  - port: web # Match the name of the port defined in your *Service*
+    interval: 30s
+    path: /metrics
