@@ -1,0 +1,93 @@
+name: CI/CD Pipeline
+
+# Trigger the workflow on push to the 'main' branch
+on:
+  push:
+    branches:
+      - main
+
+# Define the jobs for the workflow
+jobs:
+  build-and-push:
+    # Run this job on the latest Ubuntu runner
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout the code from the repository
+    - name: Checkout code
+      uses: actions/checkout@v4 # Use a recent version
+
+    # Step 2: Set up Docker Buildx (for efficient builds)
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # Step 3: Log in to Docker Hub
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }} # Use a secret for the username
+        password: ${{ secrets.DOCKERHUB_TOKEN }}   # Use a secret for the password/token
+
+    # Step 4: Build and push the Docker image for the current state
+    # You might need logic here to determine which app version this is,
+    # or build/push all versions, or trigger based on specific changes.
+    # For simplicity, let's assume this workflow handles the latest 'main'.
+    # You might want separate workflows or conditional steps for v1/v2/v3.
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: . # Build from the root of the repo
+        file: ./Dockerfile # Adjust if you have separate Dockerfiles like Dockerfile.v3
+        # If you have separate Dockerfiles for versions, you'd need separate steps or dynamic file selection
+        push: true # Push the image after building
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/sre-takehome-app:latest # Tag as latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/sre-takehome-app:${{ github.sha }} # Tag with commit SHA
+        # You could add more tags as needed
+
+  # Job 2: Deploy to Kubernetes (Separate job to allow dependency if needed)
+  deploy:
+    needs: build-and-push # Ensure the build job succeeds before deploying
+    runs-on: ubuntu-latest
+    # Add a condition to run only on pushes to 'main'
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    # Step 1: Checkout the code (might be needed if updating manifests in the repo)
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Step 2: Set up kubectl (requires KUBE_CONFIG_DATA secret)
+    # This is the complex part - configuring secure access to your K8s cluster.
+    # For Docker Desktop, this is tricky from an external CI runner like GitHub Actions.
+    # You might need to expose your cluster externally (not recommended for local dev) or use a cloud K8s service.
+    # For a local Docker Desktop cluster, this step often requires extra configuration or might not be feasible
+    # without significant network setup. Cloud providers (EKS, GKE, AKS) provide easier integrations.
+    # Let's assume you have a way to configure kubectl, perhaps using a kubeconfig secret.
+    - name: Set up kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > ~/.kube/config
+        chmod 600 ~/.kube/config
+
+    # Step 3: Update the deployment in the cluster
+    # This is a common way: update the image tag in the deployment manifest and apply it.
+    # Replace 'my-web-app-v3' with the name of your deployment and 'web' with the container name.
+    # Use the commit SHA tag for precise deployment.
+    - name: Update deployment image
+      run: |
+        kubectl set image deployment/my-web-app-v3 web=${{ secrets.DOCKERHUB_USERNAME }}/sre-takehome-app:${{ github.sha }} -n default
+        # If you have different deployments for different versions, you'd target the correct one.
+        # Example for v1: kubectl set image deployment/my-web-app-v1 web=... -n default
+
+    # Step 4: Optional - Wait for rollout to complete
+    - name: Wait for rollout to complete
+      run: |
+         kubectl rollout status deployment/my-web-app-v3 -n default # Adjust deployment name
+         # Add timeout if needed: --timeout=5m
+
+# Remember: You need to add secrets to your GitHub repository:
+# - DOCKERHUB_USERNAME
+# - DOCKERHUB_TOKEN (or password)
+# - KUBE_CONFIG_DATA (base64 encoded content of your ~/.kube/config file for the cluster)
+# Go to GitHub Repo Settings -> Secrets and Variables -> Actions -> New repository secret
